@@ -1,16 +1,12 @@
 import fs from 'fs';
-import mysql from 'mysql2';
+import 'dotenv/config';
 
-// returns date in YYYY-MM-DD format
-function theDate(today) {
-  const year = today.getFullYear().toString();
-  const month = ( today.getMonth() + 1 ).toString();
-  const day = today.getDate().toString();
+// import pool from './controller/database.js';
+import { pool } from './controller/database.js'
+import { theDate } from './controller/date.js';
 
-  return `${year}-${month}-${day}`;
-}
-
-const currDate = theDate( new Date() );
+// get the date
+const currDate = theDate( new Date() ) ;
 
 // load the data from the .txt file
 // fields are tab separated
@@ -45,21 +41,19 @@ arr1.forEach( d => {
   volumeData.push( volume );
   dataArr.push( end_of_day );
 });
-//
-console.log( dataArr )
-//
+
 // save the data in .json file using write stream
-const jsonStream = fs.createWriteStream(`equities/json/${currDate}.json`, { flags: 'w'  });
+const jsonStream = fs.createWriteStream(`equities/json/${ currDate }.json`, { flags: 'w'  });
 jsonStream.write( JSON.stringify( dataArr ) );
 jsonStream.end();
 
 // append the date from [currDate] data to a new row of the .csv file
-fs.appendFileSync( 'equities/price.csv', `\n${currDate}` );
-fs.appendFileSync( 'equities/volume.csv', `\n${currDate}` );
+fs.appendFileSync( 'equities/price.csv', `\n${ currDate }` );
+fs.appendFileSync( 'equities/volume.csv', `\n${ currDate }` );
 
 // header for output for the extracted data to the console
 console.log( (`+`).repeat(90) );
-console.log(`+++++ VFEX price sheet for ${currDate} successfully scrapped +++++` );
+console.log(`+++++ VFEX price sheet for ${ currDate } successfully extracted +++++` );
 console.log( (`+`).repeat(90) );
 
 // write the closing price & trade volume data to the .csv files
@@ -70,10 +64,10 @@ for ( let el of dataArr ) {
   const closing = el.close;
   const volumes = el.volume;
 
-  priceStream.write(`,${+closing}`);
-  volumeStream.write(`,${+volumes}`);
+  priceStream.write(`,${ +closing }`);
+  volumeStream.write(`,${ +volumes }`);
 
-  console.log(` + ${el.name}: [ US$${+closing} | ${+volumes} shares ]`)
+  console.log(` + ${ el.name }: [ US$${ closing } | ${ volumes } shares ]`)
 }
 
 // close the write streams for the CSV files
@@ -82,42 +76,25 @@ volumeStream.end();
 
 // decoration to indicate end of the data
 console.log( (`+`).repeat(90) );
+console.log( '+', (` `).repeat(89) );
+console.log( (`+`).repeat(90) );
 console.log('\r\n');
 
+//
 
-// *************** load the data to mysql database *******************
- // env variables to connect to the database
-const dbHost = '';
-const dbUser = '';
-const dbPassword = '';
-const dbName = '';
-
- // connect to the database using a pool
-const pool = mysql.createPool({
-  host: dbHost,
-  user: dbUser,
-  password: dbPassword,
-  database: dbName,
-  connectionLimit: 10
-});
-
- // feedback to indicate that the insertion into the db has begun
+// feedback to indicate that the insertion into the db has begun
 console.log( (`-`).repeat(90) );
 console.log('----- INSERTING DATA INTO PRICE & VOLUME DATABASES -----');
 console.log( (`-`).repeat(90) );
 
-console.log( closeData );
-
-// env variables for the sql queries to be executed
-const closeQuery = "";
-
-const volumeQuery = "";
+// retrieve the mysql queries to be executed on the db to prepare the statement
+const closeQuery = process.env.INSERT_CLOSE;
+const volumeQuery = process.env.INSERT_VOLUME;
 
 // execute closing price query
 pool.execute( closeQuery, closeData, ( err, results ) => {
   if (err) console.error( err.name +': '+ err.message );
   // print the response from the mysql server after executing the query else print the response received from the db
-
   console.log( results );
 });
 
@@ -126,8 +103,8 @@ pool.execute( volumeQuery, volumeData, ( err, results ) => {
   if (err) console.log( err.name +': '+ err.message );
   // print the response from the mysql server after executing the query else print the response received from the db
   console.log( results );
-
   // Close the pool after processing the query results
+
  // [pool.end] is nested in this [.execute] method as the pool connection may prematurely end before inserting of the data in the db
   pool.end( err => {
     if (err) console.error(`Error closing pool: ${err.message}`);
@@ -147,8 +124,8 @@ pool.execute( volumeQuery, volumeData, ( err, results ) => {
 const priceSQLStream = fs.createWriteStream(`./equities/price.sql`, {flags: 'w' } );
 const volSQLStream = fs.createWriteStream(`./equities/vol.sql`,{flags: 'w' } );
 // write to the .sql file with the query with the data
-priceSQLStream.write(`INSERT INTO price (date, African_Sun_Limited, Axia_Corporation_Limited, Caledonia_Mining_Corporation_Plc_Zimbabwe_Depository_Receipts, Edgars_Stores_Limited, First_Capital_Bank_Limited, Innscor_Africa_Limited, Invictus_Energy_Limited_Zimbabwe_Depository_Receipts, National_Foods_Holdings_Limited, Nedbank_Group_Limited_Zimbabwe_Depository_Receipts, Padenga_Holdings_Limited, Seed_Co_International_Limited, Simbisa_Brands_Limited, WestProp_Holdings_Limited, Zimplow_Holdings_Limited) VALUES ('${ currDate }',${ +closeData.slice(1) } );`);
-volSQLStream.write(`INSERT INTO volume (date, African_Sun_Limited, Axia_Corporation_Limited, Caledonia_Mining_Corporation_Plc_Zimbabwe_Depository_Receipts, Edgars_Stores_Limited, First_Capital_Bank_Limited, Innscor_Africa_Limited, Invictus_Energy_Limited_Zimbabwe_Depository_Receipts, National_Foods_Holdings_Limited, Nedbank_Group_Limited_Zimbabwe_Depository_Receipts, Padenga_Holdings_Limited, Seed_Co_International_Limited, Simbisa_Brands_Limited, WestProp_Holdings_Limited, Zimplow_Holdings_Limited) VALUES ('${ currDate }',${volumeData.slice(1)});`);
+priceSQLStream.write(`INSERT INTO ${ process.env.CLOSE_WRITE } VALUES ('${ currDate }',${ +closeData.slice(1) } );`);
+volSQLStream.write(`INSERT INTO volume ${ process.env.VOLUME_WRITE } VALUES ('${ currDate }',${volumeData.slice(1)});`);
 // close the stream
 priceSQLStream.end();
 volSQLStream.end();

@@ -1,1 +1,7 @@
 node_modules/
+.env
+count.txt
+employee.txt
+grep.txt
+activity/
+indices/
