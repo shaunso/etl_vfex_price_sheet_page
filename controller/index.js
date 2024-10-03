@@ -2,8 +2,8 @@ import fs from 'fs';
 import 'dotenv/config';
 
 // import pool from './controller/database.js';
-import { pool } from './controller/database.js'
-import { theDate } from './controller/date.js';
+import { pool } from '../model/database.js'
+import { theDate } from '../model/date.js';
 
 // get the date
 const currDate = theDate( new Date() ) ;
@@ -11,7 +11,8 @@ const currDate = theDate( new Date() ) ;
 // load the data from the .txt file
 // fields are tab separated
 // each row should contain the equity name, open & close price, and trade volume for the day
-const data = fs.readFileSync('priceSheet.txt', { encoding: 'utf8', flag: 'r' });
+const fPath = process.env.PRICE_SHEET_RAW;
+const data = fs.readFileSync( fPath, { encoding: 'utf8', flag: 'r' });
 
 // split the incoming data by line
 const arr = data.split('\n');
@@ -42,14 +43,20 @@ arr1.forEach( d => {
   dataArr.push( end_of_day );
 });
 
+// print the array of objects containing the transformed data
+console.log( dataArr );
+
+// retrieve path to equities data folder for data files reading, writing and appending
+const priceVolDir = process.env.EQUITIES_DIR;
+
 // save the data in .json file using write stream
-const jsonStream = fs.createWriteStream(`equities/json/${ currDate }.json`, { flags: 'w'  });
+const jsonStream = fs.createWriteStream(`${ priceVolDir }/json/${ currDate }.json`, { flags: 'w'  });
 jsonStream.write( JSON.stringify( dataArr ) );
 jsonStream.end();
 
 // append the date from [currDate] data to a new row of the .csv file
-fs.appendFileSync( 'equities/price.csv', `\n${ currDate }` );
-fs.appendFileSync( 'equities/volume.csv', `\n${ currDate }` );
+fs.appendFileSync( `${ priceVolDir }/price.csv`, `\n${ currDate }` );
+fs.appendFileSync( `${ priceVolDir }/volume.csv`, `\n${ currDate }` );
 
 // header for output for the extracted data to the console
 console.log( (`+`).repeat(90) );
@@ -57,8 +64,8 @@ console.log(`+++++ VFEX price sheet for ${ currDate } successfully extracted +++
 console.log( (`+`).repeat(90) );
 
 // write the closing price & trade volume data to the .csv files
-const priceStream = fs.createWriteStream( 'equities/price.csv', { flags: 'a' } );
-const volumeStream = fs.createWriteStream( 'equities/volume.csv', { flags: 'a' } );
+const priceStream = fs.createWriteStream( `${ priceVolDir  }/price.csv`, { flags: 'a' } );
+const volumeStream = fs.createWriteStream( `${ priceVolDir  }/volume.csv`, { flags: 'a' } );
 
 for ( let el of dataArr ) {
   const closing = el.close;
@@ -121,11 +128,11 @@ pool.execute( volumeQuery, volumeData, ( err, results ) => {
 // write sql queries in .sql files with the extracted data using a write stream
 // used to load queries into main db if the extracted data pass the sniff test
 // this to reduce the possibility of wanton data entering the production db
-const priceSQLStream = fs.createWriteStream(`./equities/price.sql`, {flags: 'w' } );
-const volSQLStream = fs.createWriteStream(`./equities/vol.sql`,{flags: 'w' } );
+const priceSQLStream = fs.createWriteStream(`${ priceVolDir }/price.sql`, {flags: 'w' } );
+const volSQLStream = fs.createWriteStream(`${ priceVolDir  }/vol.sql`,{flags: 'w' } );
 // write to the .sql file with the query with the data
-priceSQLStream.write(`INSERT INTO ${ process.env.CLOSE_WRITE } VALUES ('${ currDate }',${ +closeData.slice(1) } );`);
-volSQLStream.write(`INSERT INTO volume ${ process.env.VOLUME_WRITE } VALUES ('${ currDate }',${volumeData.slice(1)});`);
+priceSQLStream.write(`INSERT INTO ${ process.env.CLOSE_WRITE } VALUES ('${ currDate }',${ closeData.slice(1) } );`);
+volSQLStream.write(`INSERT INTO volume ${ process.env.VOLUME_WRITE } VALUES ('${ currDate }',${ volumeData.slice(1) } );`);
 // close the stream
 priceSQLStream.end();
 volSQLStream.end();
