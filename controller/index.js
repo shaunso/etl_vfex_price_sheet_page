@@ -88,6 +88,8 @@ console.log( (`+`).repeat(90) );
 console.log('\r\n');
 
 //
+console.log(` + (${ dataArr.length }) out of an expected (14) equities data successfully scrapped`);
+//
 
 // feedback to indicate that the insertion into the db has begun
 console.log( (`-`).repeat(90) );

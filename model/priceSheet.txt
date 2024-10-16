@@ -1,28 +1,28 @@
-African Sun Limited	0.0395	0.0395	2565
+African Sun Limited	0.0398	0.047	1000
  	 	 	 
-Axia Corporation Limited	0.0819	0.074	9456
+Axia Corporation Limited	0.08	0.08	0
  	 	 	 
 Caledonia Mining Corporation Plc	14.7	14.7	0
  	 	 	 
-Edgars Stores Limited	0.0128	0.0128	0
+Edgars Stores Limited	0.0102	0.0102	0
  	 	 	 
-First Capital Bank Limited	0.0502	0.0464	88975
+First Capital Bank Limited	0.0495	0.0471	175108
  	 	 	 
-Innscor Africa Limited	0.46	0.4569	1015
+Innscor Africa Limited	0.45	0.45	149035
  	 	 	 
-Invictus Energy Zdrs	0.08	0.08	78988
+Invictus Energy Zdrs	0.08	0.08	0
  	 	 	 
-National Foods Holdings Ltd	1.9044	1.9044	0
+National Foods Holdings Ltd	1.905	1.9161	351
  	 	 	 
 Nedbank Group Limited Zimbabwe Depository Receipts	12	12	0
  	 	 	 
  	 	 	 
-Padenga Holdings Ltd	0.165	0.165	6363
+Padenga Holdings Ltd	0.18	0.1797	7314
  	 	 	 
 Seed Co International Vx	0.21	0.21	0
  	 	 	 
-Simbisa Brands Limited	0.3498	0.3463	1480
+Simbisa Brands Limited	0.34	0.34	604421
  	 	 	 
 West Prop Holdings Limited	10.05	10.05	0
  	 	 	 
-Zimplow Holdings Limited	0.0147	0.0147	6400
+Zimplow Holdings Limited	0.0132	0.013	12350
