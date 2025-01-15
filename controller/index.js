@@ -85,11 +85,11 @@ volumeStream.end();
 console.log( (`+`).repeat(90) );
 console.log( '+', (` `).repeat(89) );
 console.log( (`+`).repeat(90) );
-console.log('\r\n');
 
-//
-console.log(` + (${ dataArr.length }) out of an expected (14) equities data successfully scrapped`);
-//
+// displays the number of equities extracted from the file
+console.log(` ++ (${ dataArr.length }) out of an expected (14) equities data successfully scrapped`);
+console.log( (`+`).repeat(90) );
+console.log('\r\n');
 
 // feedback to indicate that the insertion into the db has begun
 console.log( (`-`).repeat(90) );
@@ -130,11 +130,27 @@ pool.execute( volumeQuery, volumeData, ( err, results ) => {
 // write sql queries in .sql files with the extracted data using a write stream
 // used to load queries into main db if the extracted data pass the sniff test
 // this to reduce the possibility of wanton data entering the production db
+console.log( (`-`).repeat(90) );
+console.log('----- WRITTING SQL QUERIES TO FILES -----');
+console.log( (`-`).repeat(90) );
+
 const priceSQLStream = fs.createWriteStream(`${ priceVolDir }/price.sql`, {flags: 'w' } );
 const volSQLStream = fs.createWriteStream(`${ priceVolDir  }/vol.sql`,{flags: 'w' } );
 // write to the .sql file with the query with the data
-priceSQLStream.write(`INSERT INTO ${ process.env.CLOSE_WRITE } VALUES ('${ currDate }',${ closeData.slice(1) } );`);
-volSQLStream.write(`INSERT INTO volume ${ process.env.VOLUME_WRITE } VALUES ('${ currDate }',${ volumeData.slice(1) } );`);
+priceSQLStream.write(`INSERT INTO ${ process.env.CLOSE_WRITE } VALUES ('${ currDate }',${ closeData.slice(1) });`);
+volSQLStream.write(`INSERT INTO volume ${ process.env.VOLUME_WRITE } VALUES ('${ currDate }',${ volumeData.slice(1) });`);
 // close the stream
 priceSQLStream.end();
 volSQLStream.end();
+
+priceSQLStream.on('finish', () => {
+  console.log( (`-`).repeat(90) );
+  console.log('----- PRICE QUERY SUCCESSFULLY WRITTEN TO FILE -----');
+  console.log( (`-`).repeat(90) );
+});
+
+volSQLStream.on('finish', () => {
+  console.log( (`-`).repeat(90) );
+  console.log('----- VOLUME QUERY SUCCESSFULLY WRITTEN TO FILE -----');
+  console.log( (`-`).repeat(90) );
+});
