@@ -1,1 +1,0 @@
-INSERT INTO indices (date, all_share_index) VALUES ('2025-1-22',104.39);

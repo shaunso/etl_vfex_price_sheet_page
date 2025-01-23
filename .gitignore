@@ -1,8 +1,10 @@
 node_modules/
 .env
-count.txt
-employee.txt
-grep.txt
 activity/
 indices/
 model/price_vol/
+model/data/equities/
+model/data/indices/
+model/data/sql/
+readme_v1.md
+utils/logs/errors
