@@ -1,156 +1,262 @@
 import fs from 'fs';
-import 'dotenv/config';
+import jsdom from 'jsdom';
 
-// import pool from './controller/database.js';
-import { pool } from '../model/database.js'
-import { theDate } from '../model/date.js';
+const { JSDOM } = jsdom;
 
-// get the date
-const currDate = theDate( new Date() ) ;
+const priceTableInsertQuery = process.env.CLOSE_WRITE;
+const volumeTableInsertQuery = process.env.VOLUME_WRITE;
 
-// load the data from the .txt file
-// fields are tab separated
-// each row should contain the equity name, open & close price, and trade volume for the day
-const fPath = process.env.PRICE_SHEET_RAW;
-const data = fs.readFileSync( fPath, { encoding: 'utf8', flag: 'r' });
+// function that returns the date argument for further usage in the YYYY-MM-DD format
+function theDate(today) {
+  const date = new Date(today)
+  const year = date.getFullYear().toString();
+  const month = ( date.getMonth() + 1 ).toString();
+  const day = date.getDate().toString();
 
-// split the incoming data by line
-const arr = data.split('\n');
-
-// remove empty rows
-const arr1 = arr.filter( d => d.length > 10 );
-
-// dataArr stores the data as an array of objects
-// closeData stores the closing prices in an array of elements
-// volumeData stores the closing prices in an array of elements
-const dataArr = [];
-const closeData = [];
-const volumeData = [];
-
-// adding the date as the first element of the arrays
-// ensures data is transformed for database
-closeData.push( ( currDate ) );
-volumeData.push( currDate );
-
-// extract, transform & push the data from each row into the relevant arrays
-arr1.forEach( d => {
-  const equity = d.split('\t');
-  const [ name, open, close, volume ] = equity;
-  const end_of_day = { name: name, open: +open, close: +close, volume: +volume };
-
-  closeData.push( close );
-  volumeData.push( volume );
-  dataArr.push( end_of_day );
-});
-
-// print the array of objects containing the transformed data
-console.log( dataArr );
-
-// retrieve path to equities data folder for data files reading, writing and appending
-const priceVolDir = process.env.EQUITIES_DIR;
-
-// save the data in .json file using write stream
-const jsonStream = fs.createWriteStream(`${ priceVolDir }/json/${ currDate }.json`, { flags: 'w'  });
-jsonStream.write( JSON.stringify( dataArr ) );
-jsonStream.end();
-
-// append the date from [currDate] data to a new row of the .csv file
-fs.appendFileSync( `${ priceVolDir }/price.csv`, `\n${ currDate }` );
-fs.appendFileSync( `${ priceVolDir }/volume.csv`, `\n${ currDate }` );
-
-// header for output for the extracted data to the console
-console.log( (`+`).repeat(90) );
-console.log(`+++++ VFEX price sheet for ${ currDate } successfully extracted +++++` );
-console.log( (`+`).repeat(90) );
-
-// write the closing price & trade volume data to the .csv files
-const priceStream = fs.createWriteStream( `${ priceVolDir  }/price.csv`, { flags: 'a' } );
-const volumeStream = fs.createWriteStream( `${ priceVolDir  }/volume.csv`, { flags: 'a' } );
-
-for ( let el of dataArr ) {
-  const closing = el.close;
-  const volumes = el.volume;
-
-  priceStream.write(`,${ +closing }`);
-  volumeStream.write(`,${ +volumes }`);
-
-  console.log(` + ${ el.name }: [ US$${ closing } | ${ volumes } shares ]`)
+  return `${year}-${month}-${day}`;
 }
 
-// close the write streams for the CSV files
-priceStream.end();
-volumeStream.end();
+(async () => {
+  try {
+    // request pages for data
+    const priceSheetResponse = await fetch('https://www.vfex.exchange/price-sheet/');
+    const indicesResponse = await fetch('https://www.vfex.exchange/');
+    
+    const priceSheetText = await priceSheetResponse.text();
+    const indicesText = await indicesResponse.text();
+    
+    const priceSheetDOM = new JSDOM(priceSheetText);
+    const indicesDOM = new JSDOM(indicesText);
 
-// decoration to indicate end of the data
-console.log( (`+`).repeat(90) );
-console.log( '+', (` `).repeat(89) );
-console.log( (`+`).repeat(90) );
+    // retrieve date
+    const priceSheetRawDataDate = priceSheetDOM.window.document.querySelector('.elementor-heading-title').textContent.trim();
+    const indicesRawDataDate = indicesDOM.window.document.querySelector('.elementor-element-c274a2b > div:nth-child(1) > h2').textContent.trim().split(" ").toSpliced(0,2);
 
-// displays the number of equities extracted from the file
-console.log(` ++ (${ dataArr.length }) out of an expected (14) equities data successfully scrapped`);
-console.log( (`+`).repeat(90) );
-console.log('\r\n');
+    const priceSheetDataDate = theDate(priceSheetRawDataDate);
+    const indicesDataDate  = theDate(indicesRawDataDate);  
 
-// feedback to indicate that the insertion into the db has begun
-console.log( (`-`).repeat(90) );
-console.log('----- INSERTING DATA INTO PRICE & VOLUME DATABASES -----');
-console.log( (`-`).repeat(90) );
+    // retrieve data
+    const priceSheetRowElements = priceSheetDOM.window.document.querySelectorAll('tbody > tr');
+    const indicesRowElements = indicesDOM.window.document.querySelectorAll('section.elementor-inner-section:nth-child(6) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) tr');
+    
+    const priceSheetDataFiltered = Array.from(priceSheetRowElements).filter( d => (d.querySelector('td').textContent.length > 12) );
+    const indicesDataFiltered = Array.from(indicesRowElements);
+    indicesDataFiltered.shift();  
 
-// retrieve the mysql queries to be executed on the db to prepare the statement
-const closeQuery = process.env.INSERT_CLOSE;
-const volumeQuery = process.env.INSERT_VOLUME;
+    // store scrapped data
+    const priceSheetData = [];
+    const indicesData = [];
 
-// execute closing price query
-pool.execute( closeQuery, closeData, ( err, results ) => {
-  if (err) console.error( err.name +': '+ err.message );
-  // print the response from the mysql server after executing the query else print the response received from the db
-  console.log( results );
-});
+    // destructure the data
+    const priceSheetDataDestructeredPriceData = [];
+    const priceSheetDataDestructeredVolumeData = [];
+    const indicesDataDestructeredValueData = [];
+    
+    priceSheetDataFiltered.forEach( d => {
+      const name = d.querySelector('td:nth-child(1)').textContent;
+      const open = d.querySelector('td:nth-child(2)').textContent;
+      const close = d.querySelector('td:nth-child(3)').textContent;
+      const volume = d.querySelector('td:nth-child(4)').textContent;
 
-// execute the volume query
-pool.execute( volumeQuery, volumeData, ( err, results ) => {
-  if (err) console.log( err.name +': '+ err.message );
-  // print the response from the mysql server after executing the query else print the response received from the db
-  console.log( results );
-  // Close the pool after processing the query results
+      priceSheetData.push( { date: priceSheetDataDate, name, open, close, volume } );
+      priceSheetDataDestructeredPriceData.push( close );
+      priceSheetDataDestructeredVolumeData.push( volume );
+    });
 
- // [pool.end] is nested in this [.execute] method as the pool connection may prematurely end before inserting of the data in the db
-  pool.end( err => {
-    if (err) console.error(`Error closing pool: ${err.message}`);
-  });
+    indicesDataFiltered.forEach( d => {
+      const index = d.querySelector('td:nth-child(1)').textContent;
+      const value = d.querySelector('td:nth-child(2)').textContent;
 
-  // decoration to indicate end of the data
-  console.log( (`-`).repeat(90) );
-  console.log('----- POOL CLOSED SUCCESSFULLY -----');
-  console.log( (`-`).repeat(90) );
-});
+      indicesData.push( { date: indicesDataDate, index, value } );
+      indicesDataDestructeredValueData.push( value );
+    });
+
+    console.log(priceSheetData);
+    // decoration for cli
+    console.log( (`+`).repeat(90) );
+    console.log(`+++++ VFEX price sheet for ${ priceSheetDataDate } successfully extracted +++++` );
+    console.log( (`+`).repeat(90) );
+
+    // displays the number of equities extracted
+    console.log(` ++ (${ priceSheetData.length }) out of an expected (14) equities data successfully scrapped`);
+    console.log( (`+`).repeat(90) );
+    console.log('\r');
+
+    console.log(indicesData);
+    console.log( (`+`).repeat(90) );
+    console.log(`+++++ VFEX indices for ${ indicesDataDate } successfully extracted +++++` );
+    console.log( (`+`).repeat(90) );
 
 
-// ***************************** write .sql queries ****************************
-// write sql queries in .sql files with the extracted data using a write stream
-// used to load queries into main db if the extracted data pass the sniff test
-// this to reduce the possibility of wanton data entering the production db
-console.log( (`-`).repeat(90) );
-console.log('----- WRITTING SQL QUERIES TO FILES -----');
-console.log( (`-`).repeat(90) );
+    // WRITE THE DATA TO FILE
+    // file paths
+    const priceSheetDataPriceCSVfilePath = process.env.EQUITIES_CSV_FILE_PRICE;
+    const priceSheetDataVolumeCSVfilePath = process.env.EQUITIES_CSV_FILE_VOLUME;
+    const indicesDataCSVfilePath = process.env.INDICES_CSV_FILE;
 
-const priceSQLStream = fs.createWriteStream(`${ priceVolDir }/price.sql`, {flags: 'w' } );
-const volSQLStream = fs.createWriteStream(`${ priceVolDir  }/vol.sql`,{flags: 'w' } );
-// write to the .sql file with the query with the data
-priceSQLStream.write(`INSERT INTO ${ process.env.CLOSE_WRITE } VALUES ('${ currDate }',${ closeData.slice(1) });`);
-volSQLStream.write(`INSERT INTO volume ${ process.env.VOLUME_WRITE } VALUES ('${ currDate }',${ volumeData.slice(1) });`);
-// close the stream
-priceSQLStream.end();
-volSQLStream.end();
+    const priceSheetDataPriceJSONfilePath = process.env.EQUITIES_JSON;
+    const indicesDataJSONfilePath = process.env.INDICES_JSON;
 
-priceSQLStream.on('finish', () => {
-  console.log( (`-`).repeat(90) );
-  console.log('----- PRICE QUERY SUCCESSFULLY WRITTEN TO FILE -----');
-  console.log( (`-`).repeat(90) );
-});
+  
+  const priceSheetDataPriceSQLfilePath = process.env.EQUITIES_SQL_FILE_PRICE;
+  const priceSheetDataVolumeSQLfilePath = process.env.EQUITIES_SQL_FILE_VOLUME;
+  const indicesDataSQLfilePath = process.env.INDICES_SQL_FILE;
 
-volSQLStream.on('finish', () => {
-  console.log( (`-`).repeat(90) );
-  console.log('----- VOLUME QUERY SUCCESSFULLY WRITTEN TO FILE -----');
-  console.log( (`-`).repeat(90) );
-});
+    // CSV
+    // create write streams
+    const priceSheetDataClosingPriceStream = fs.createWriteStream( priceSheetDataPriceCSVfilePath, { flags: 'a' } );
+    const priceSheetDataVolumeStream = fs.createWriteStream( priceSheetDataVolumeCSVfilePath, { flags: 'a' } );
+    const indicesDataStream = fs.createWriteStream( indicesDataCSVfilePath, { flags: 'a' } );
+
+    // write the date
+    priceSheetDataClosingPriceStream.write(`\n${ priceSheetDataDate }`);
+    priceSheetDataVolumeStream.write(`\n${ priceSheetDataDate }`);
+    indicesDataStream.write(`\n${ indicesDataDate }`);
+
+    // write the data
+    priceSheetData.forEach( el => {    
+      priceSheetDataClosingPriceStream.write(`,${ +el.close }`);
+      priceSheetDataVolumeStream.write(`,${ +el.volume }`);  
+      console.log(` + ${ el.name }: [ US$${ el.close } | ${ el.volume } shares ]`)
+    });
+    console.log( (`+`).repeat(90) );
+
+    indicesData.forEach( el => {    
+      indicesDataStream.write(`,${ +el.value }`);    
+      console.log(` + ${ el.index }: [ ${ el.value } ]`)
+    });
+    console.log( (`+`).repeat(90) );
+
+    // close the  CSV write streams
+    priceSheetDataClosingPriceStream.end();
+    priceSheetDataVolumeStream.end();
+    indicesDataStream.end();
+
+    priceSheetDataClosingPriceStream.on('finish', () => {
+      console.log(' - Price sheet data for price written to CSV');
+    });    
+    priceSheetDataVolumeStream.on('finish', () => {
+      console.log(' - Price sheet data for volume written to CSV');
+    });
+    indicesDataStream.on('finish', () => {
+      console.log(' - Indices data written to CSV');
+    });
+
+    // JSON
+    const priceSheetDataJSONstream = fs.createWriteStream( `${ priceSheetDataPriceJSONfilePath }/${ priceSheetDataDate }.json` , { flags: 'w' });
+    const indicesDataJSONstream = fs.createWriteStream( `${ indicesDataJSONfilePath }/${ indicesDataDate }.json` , { flags: 'w' });
+
+    priceSheetDataJSONstream.write( JSON.stringify( priceSheetData ) );
+    indicesDataJSONstream.write( JSON.stringify( indicesData ) );
+
+    priceSheetDataJSONstream.end();
+    indicesDataJSONstream.end();
+
+    priceSheetDataJSONstream.on('finish', () => {
+      console.log(' - Price sheet data written to JSON');
+    });
+    indicesDataJSONstream.on('finish', () => {
+      console.log(' - Indices data written to JSON');
+    });    
+
+    // SQL
+    const priceSheetDataPriceSQLStream = fs.createWriteStream( priceSheetDataPriceSQLfilePath , {flags: 'w' } );
+    const priceSheetDataVolumeSQLStream = fs.createWriteStream( priceSheetDataVolumeSQLfilePath ,{flags: 'w' } );
+    const indicesSQLStream = fs.createWriteStream( indicesDataSQLfilePath ,{flags: 'w' } );
+
+    priceSheetDataPriceSQLStream.write(`INSERT INTO ${ process.env.PRICE_INSERT } VALUES ('${ priceSheetDataDate }',${ priceSheetDataDestructeredPriceData });`);
+    priceSheetDataVolumeSQLStream.write(`INSERT INTO volume ${ process.env.VOLUME_INSERT } VALUES ('${ priceSheetDataDate }',${ priceSheetDataDestructeredVolumeData });`);
+    indicesSQLStream.write(`INSERT INTO indices ${ process.env.INDICES_INSERT } VALUES ('${ indicesDataDate }',${ indicesDataDestructeredValueData });`);
+
+    priceSheetDataPriceSQLStream.end();
+    priceSheetDataVolumeSQLStream.end();
+    indicesSQLStream.end();
+    
+    priceSheetDataPriceSQLStream.on('finish', () => {
+      console.log(' - Price sheet data for price written to SQL');
+    });
+    priceSheetDataVolumeSQLStream.on('finish', () => {
+      console.log(' - Price sheet data for volume written to SQL');
+    });
+    indicesSQLStream.on('finish', () => {
+      console.log(' - Indices data written to SQL');
+    });
+
+    // INSERT DATA IN DATABASE
+
+
+  } catch (error) {
+    console.log( (`%`).repeat(60) );
+    console.log( `%`, (' ').repeat(56), '%' );
+    console.error('%    AN ERROR OCCURED WHILE CODE EXECUTION WAS UNDERWAY    %')
+    console.log( `%`, (' ').repeat(56), '%' );
+    console.log( (`%`).repeat(60) );
+    console.error(error)
+  }
+
+
+    
+    // dataArr stores the data as an array of objects
+    // closeData stores the closing prices in an array of elements
+    // volumeData stores the closing prices in an array of elements
+    const dataArr = [];
+    const closeData = [];
+    const volumeData = [];
+    
+    // adding the date as the first element of the arrays
+    // ensures data is transformed for database
+
+    
+    // extract, transform & push the data from each row into the relevant arrays
+    // arr1.forEach( d => {
+    //   const equity = d.split('\t');
+    //   const [ name, open, close, volume ] = equity;
+    //   const end_of_day = { name: name, open: +open, close: +close, volume: +volume };
+    
+    //   closeData.push( close );
+    //   volumeData.push( volume );
+    //   dataArr.push( end_of_day );
+    // });
+    
+    // print the array of objects containing the transformed data
+    // console.log( dataArr );
+    
+    // retrieve path to equities data folder for data files reading, writing and appending
+    const priceVolDir = process.env.EQUITIES_DIR;
+    
+    // // feedback to indicate that the insertion into the db has begun
+    // console.log( (`+`).repeat(90) );
+    // console.log(' - Inserting extracted data to database');
+    
+    // // retrieve the mysql queries to be executed on the db to prepare the statement
+    // const closeQuery = process.env.INSERT_CLOSE;
+    // const volumeQuery = process.env.INSERT_VOLUME;
+    
+    // // execute closing price query
+    // pool.execute( closeQuery, closeData, ( err, results ) => {
+    //   if (err) {
+    //     console.error(`Error inserting into price table: ${err.message}`)
+    //   } else {
+    //     console.log( ` + price table row id: ${results.insertId}` );
+    //   };
+    // });
+
+    // // execute the volume query
+    // pool.execute( volumeQuery, volumeData, ( err, results ) => {
+    //   if (err) {
+    //     // console.error(`Error inserting into volume table: ${err}`)
+    //     console.error(`Error inserting into price table: ${err.message}`)
+    //   } else {
+    //     console.log( ` + volume table row id: ${results.insertId}` );
+    //   }
+
+    //   // Close the pool after processing the query results
+    
+    // // [pool.end] is nested in this [.execute] method as the pool connection may prematurely end before inserting of the data in the db
+    //   pool.end( err => {
+    //     if (err) console.error(`Error closing pool: ${err.message}`);
+    //     console.log( (`+`).repeat(90) );
+    //   });
+})
+
+();

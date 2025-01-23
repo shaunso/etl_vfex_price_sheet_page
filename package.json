@@ -5,14 +5,14 @@
   "main": "controller/index.js",
   "type": "module",
   "scripts": {
-    "start": "node controller/index.js",
+    "start": "node --env-file=.env controller/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "dotenv": "^16.4.5",
+    "jsdom": "^26.0.0",
     "mysql2": "^3.11.3"
   }
 }
