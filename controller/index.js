@@ -3,8 +3,19 @@ import jsdom from 'jsdom';
 import pool from '../model/database.js';
 import theDate from '../model/date.js';
 import generateRandomString from '../model/stringGenerator.js';
+import { error } from 'console';
 
 const { JSDOM } = jsdom;
+
+function filteredRows( d ) {
+  if ( d.querySelector('td').textContent.length > 12 ){
+      return d.querySelector('td').textContent.length > 12
+  } else if ( d.querySelector('td').textContent > 0 ) {
+      return d.querySelector('td').textContent > 0
+  } else {
+    console.error(`Data extraction failed due to table structure malformation: ${err.message}`)
+  }
+}
 
 (async () => {
   try {
@@ -29,7 +40,7 @@ const { JSDOM } = jsdom;
     const priceSheetRowElements = priceSheetDOM.window.document.querySelectorAll('tbody > tr');
     const indicesRowElements = indicesDOM.window.document.querySelectorAll('section.elementor-inner-section:nth-child(6) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) tr');
     
-    const priceSheetDataFiltered = Array.from(priceSheetRowElements).filter( d => (d.querySelector('td').textContent.length > 12) );
+    const priceSheetDataFiltered = Array.from(priceSheetRowElements).filter( d => filteredRows(d) );
     const indicesDataFiltered = Array.from(indicesRowElements);
     indicesDataFiltered.shift();  
 
@@ -43,14 +54,26 @@ const { JSDOM } = jsdom;
     const indicesDataDestructeredValueData = [];
     
     priceSheetDataFiltered.forEach( d => {
-      const name = d.querySelector('td:nth-child(1)').textContent;
-      const open = d.querySelector('td:nth-child(2)').textContent;
-      const close = d.querySelector('td:nth-child(3)').textContent;
-      const volume = d.querySelector('td:nth-child(4)').textContent;
 
-      priceSheetData.push( { date: priceSheetDataDate, name, open, close, volume } );
-      priceSheetDataDestructeredPriceData.push( +close );
-      priceSheetDataDestructeredVolumeData.push( +volume );
+      if ( d.querySelector('td').textContent.length < 3 ) {
+        const name = d.querySelector('td:nth-child(2)').textContent;
+        const open = +d.querySelector('td:nth-child(3)').textContent;
+        const close = +d.querySelector('td:nth-child(4)').textContent;
+        const volume = +d.querySelector('td:nth-child(5)').textContent;
+
+        priceSheetData.push( { date: priceSheetDataDate, name, open, close, volume } );
+        priceSheetDataDestructeredPriceData.push( +close );
+        priceSheetDataDestructeredVolumeData.push( +volume );
+      } else {
+        const name = d.querySelector('td:nth-child(1)').textContent;
+        const open = +d.querySelector('td:nth-child(2)').textContent;
+        const close = +d.querySelector('td:nth-child(3)').textContent;
+        const volume = +d.querySelector('td:nth-child(4)').textContent;
+
+        priceSheetData.push( { date: priceSheetDataDate, name, open, close, volume } );
+        priceSheetDataDestructeredPriceData.push( +close );
+        priceSheetDataDestructeredVolumeData.push( +volume );
+      }
     });
 
     indicesDataFiltered.forEach( d => {
@@ -62,13 +85,13 @@ const { JSDOM } = jsdom;
     });
 
     console.log(priceSheetData);
-    // decoration for cli
+    // output decoration 
     console.log( (`+`).repeat(90) );
     console.log(`+++++ VFEX price sheet for ${ priceSheetDataDate } successfully extracted +++++` );
     console.log( (`+`).repeat(90) );
 
     // displays the number of equities extracted
-    console.log(` ++ (${ priceSheetData.length }) out of an expected (14) equities data successfully scrapped`);
+    console.log(` ++ (${ priceSheetData.length }) out of an expected (13) equities data successfully scrapped`);
     console.log( (`+`).repeat(90) );
     console.log('\r');
 
@@ -108,7 +131,7 @@ const { JSDOM } = jsdom;
     priceSheetData.forEach( el => {    
       priceSheetDataClosingPriceStream.write(`,${ +el.close }`);
       priceSheetDataVolumeStream.write(`,${ +el.volume }`);  
-      console.log(` + ${ el.name }: [ US$${ +el.close } | ${ +el.volume } shares ]`)
+      console.log(` + ${ el.name }: [ US$${ +el.close } | ${ new Intl.NumberFormat('en-GB').format(+el.volume) } shares ]`)
     });
     console.log( (`+`).repeat(90) );
 
@@ -226,16 +249,16 @@ const { JSDOM } = jsdom;
       console.error(error);
 
       const errorOutput = {
-        refNo: generateRandomString(5), 
-        timestamp: new Date(),
-        error: error,
+        ref: generateRandomString(5), 
+        time: new Date(),
+        message: error.message,
       }
 
       const errorLogsStream = fs.createWriteStream( process.env.ERROR_LOGS, { flags: 'a' } );
-      errorLogsStream.write( '\r\r' + errorOutput);
+      errorLogsStream.write( '\r\r' + JSON.stringify(errorOutput));
       errorLogsStream.end();
       errorLogsStream.on('finish', () => {
-        console.log(`check error log ${ errorOutput.refNo }`)
+        console.log(`ERROR REF NO: '${ errorOutput.refNo }'`)
       })
     } finally {
         console.log( (`+`).repeat(90) );
