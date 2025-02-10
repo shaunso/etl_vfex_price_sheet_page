@@ -12,9 +12,7 @@ function filteredRows( d ) {
       return d.querySelector('td').textContent.length > 12
   } else if ( d.querySelector('td').textContent > 0 ) {
       return d.querySelector('td').textContent > 0
-  } else {
-    console.error(`Data extraction failed due to table structure malformation: ${err.message}`)
-  }
+  } 
 }
 
 (async () => {
