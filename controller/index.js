@@ -3,31 +3,43 @@ import jsdom from 'jsdom';
 import pool from '../model/database.js';
 import theDate from '../model/date.js';
 import generateRandomString from '../model/stringGenerator.js';
-import { error } from 'console';
 
+// variable definitions
 const { JSDOM } = jsdom;
 
+// function definitions
 function filteredRows( d ) {
   if ( d.querySelector('td').textContent.length > 12 ){
-      return d.querySelector('td').textContent.length > 12
-  } else if ( d.querySelector('td').textContent > 0 ) {
-      return d.querySelector('td').textContent > 0
-  } 
+    return true
+  } else if ( d.querySelector('td').textContent > 0 && d.querySelector('td').textContent !== ' ' ) {
+    return true
+  }
+  return false
 }
 
-(async () => {
+function whitespaceFilter(d) {
+  if ( d.innerHTML !== '&nbsp;' ) {
+      return true
+  } else 
+      return false
+}
+
+// main function
+async function vfexETL() {
   try {
-    // request pages for data
+    // request pages for data extraction
     const priceSheetResponse = await fetch('https://www.vfex.exchange/price-sheet/');
     const indicesResponse = await fetch('https://www.vfex.exchange/');
     
+    // store promise responses
     const priceSheetText = await priceSheetResponse.text();
     const indicesText = await indicesResponse.text();
     
+    // create virtual dom using fetched data
     const priceSheetDOM = new JSDOM(priceSheetText);
     const indicesDOM = new JSDOM(indicesText);
 
-    // retrieve date
+    // retrieve date from web page
     const priceSheetRawDataDate = priceSheetDOM.window.document.querySelector('.elementor-heading-title').textContent.trim();
     const indicesRawDataDate = indicesDOM.window.document.querySelector('.elementor-element-c274a2b > div:nth-child(1) > h2').textContent.trim().split(" ").toSpliced(0,2);
 
@@ -37,8 +49,7 @@ function filteredRows( d ) {
     // retrieve data
     const priceSheetRowElements = priceSheetDOM.window.document.querySelectorAll('tbody > tr');
     const indicesRowElements = indicesDOM.window.document.querySelectorAll('section.elementor-inner-section:nth-child(6) > div:nth-child(1) > div:nth-child(1) > div:nth-child(2) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) tr');
-    
-    const priceSheetDataFiltered = Array.from(priceSheetRowElements).filter( d => filteredRows(d) );
+    const priceSheetDataFiltered = Array.from(priceSheetRowElements).filter(filteredRows);
     const indicesDataFiltered = Array.from(indicesRowElements);
     indicesDataFiltered.shift();  
 
@@ -46,32 +57,35 @@ function filteredRows( d ) {
     const priceSheetData = [];
     const indicesData = [];
 
-    // destructure the data
+    // structure the extracted data
     const priceSheetDataDestructeredPriceData = [];
     const priceSheetDataDestructeredVolumeData = [];
     const indicesDataDestructeredValueData = [];
     
     priceSheetDataFiltered.forEach( d => {
+      const rowElementsArray = Array.from(d.querySelectorAll('td'));
+      const whitespaceFilteredRowElementsArray = rowElementsArray.filter( whitespaceFilter );
+      if (whitespaceFilteredRowElementsArray[0].textContent.length < 4 ) {
+        whitespaceFilteredRowElementsArray.shift()
+      } 
 
-      if ( d.querySelector('td').textContent.length < 3 ) {
-        const name = d.querySelector('td:nth-child(2)').textContent;
-        const open = +d.querySelector('td:nth-child(3)').textContent;
-        const close = +d.querySelector('td:nth-child(4)').textContent;
-        const volume = +d.querySelector('td:nth-child(5)').textContent;
+      // uncomment this line to debug if table row format dramatically changes to an uncovered scenario
+      // whitespaceFilteredRowElementsArray.forEach( (d,i) => console.log(i + ': ' + d.innerHTML));
 
-        priceSheetData.push( { date: priceSheetDataDate, name, open, close, volume } );
-        priceSheetDataDestructeredPriceData.push( +close );
-        priceSheetDataDestructeredVolumeData.push( +volume );
-      } else {
-        const name = d.querySelector('td:nth-child(1)').textContent;
-        const open = +d.querySelector('td:nth-child(2)').textContent;
-        const close = +d.querySelector('td:nth-child(3)').textContent;
-        const volume = +d.querySelector('td:nth-child(4)').textContent;
+      const name = whitespaceFilteredRowElementsArray[0].textContent;
+      const open = +whitespaceFilteredRowElementsArray[1].textContent;
+      const close = +whitespaceFilteredRowElementsArray[2].textContent;
+      const volume =+whitespaceFilteredRowElementsArray[3].textContent;
 
-        priceSheetData.push( { date: priceSheetDataDate, name, open, close, volume } );
-        priceSheetDataDestructeredPriceData.push( +close );
-        priceSheetDataDestructeredVolumeData.push( +volume );
-      }
+      priceSheetData.push( { 
+        date: priceSheetDataDate,
+        name: name,
+        open: open,
+        close: close,
+        volume: volume
+      });
+      priceSheetDataDestructeredPriceData.push( close );
+      priceSheetDataDestructeredVolumeData.push( volume );
     });
 
     indicesDataFiltered.forEach( d => {
@@ -235,9 +249,11 @@ function filteredRows( d ) {
       pool.end( err => {
         if (err) console.error(`Error closing pool: ${err.message}`);
         });
+
+    // Array.from(priceSheetRowElements).forEach( d => console.log(d.querySelectorAll('td')))
+
     })
-    
-      
+          
     } catch (error) {
       console.log( (`%`).repeat(60) );
       console.log( `%`, (' ').repeat(56), '%' );
@@ -262,6 +278,6 @@ function filteredRows( d ) {
         console.log( (`+`).repeat(90) );
         console.log( (`+`).repeat(90) );
     }
-})
+}
 
-();
+vfexETL();
